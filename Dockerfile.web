@@ -1,0 +1,23 @@
+# Deploys the FastAPI dashboard (server.py) as a public web service.
+# This is separate from the root Dockerfile, which proves the detection
+# path's isolation and only runs engine.py -- it deliberately has no web
+# server. Point Render's "Dockerfile Path" (under Advanced) at this file.
+
+FROM python:3.13-slim
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Bake in demo captures + a trained model at build time, so the deployed
+# dashboard has something to replay without needing scapy on the client
+# side or a manual training pass after deploy.
+RUN python data/generate.py --seed 42 && python train.py
+
+RUN useradd --create-home --shell /usr/sbin/nologin dash && chown -R dash /app
+USER dash
+
+# Render injects $PORT at runtime and requires the app to bind 0.0.0.0.
+CMD ["sh", "-c", "python server.py --host 0.0.0.0 --port ${PORT:-8000}"]
