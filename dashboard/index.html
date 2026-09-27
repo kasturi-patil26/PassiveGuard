@@ -233,7 +233,7 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
 
 /* ===== WEBSOCKET ===== */
 function connect() {
-  ws = new WebSocket(`ws://${location.host}/stream`);
+  ws = new WebSocket(`${location.protocol==="https:"?"wss:":"ws:"}//${location.host}/stream`);
   ws.onopen = () => { $("connDot").classList.add("on"); $("connText").textContent = "live"; };
   ws.onclose = () => { $("connDot").classList.remove("on"); $("connText").textContent = "disconnected"; setTimeout(connect, 1500); };
   ws.onmessage = ev => {
