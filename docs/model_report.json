@@ -1,0 +1,75 @@
+{
+  "model": "IsolationForest",
+  "library": "scikit-learn",
+  "trained_on": "data/pcaps/normal.pcap",
+  "training_regime": "unsupervised; benign traffic only, no attack samples seen during fit",
+  "features": [
+    "packet_rate_pps",
+    "log_bytes_out",
+    "log_bytes_in",
+    "unique_dst_hosts",
+    "unique_dst_ports",
+    "syn_rate_pps",
+    "completion_ratio",
+    "out_in_byte_ratio",
+    "mean_packet_size",
+    "flow_rate_fps"
+  ],
+  "window_seconds": 5.0,
+  "hyperparameters": {
+    "n_estimators": 200,
+    "contamination": 0.01,
+    "random_state": 42,
+    "scaler": "StandardScaler"
+  },
+  "training": {
+    "samples": 256,
+    "features": 10,
+    "n_estimators": 200,
+    "calibration_median_raw": 0.2683360525832301,
+    "calibration_extreme_raw": -0.098057551140322,
+    "benign_max_score": 0.9,
+    "alert_threshold": 0.92
+  },
+  "feature_means": {
+    "packet_rate_pps": 6.7555,
+    "log_bytes_out": 10.0974,
+    "log_bytes_in": 8.0873,
+    "unique_dst_hosts": 2.5742,
+    "unique_dst_ports": 2.5352,
+    "syn_rate_pps": 0.0367,
+    "completion_ratio": -0.8828,
+    "out_in_byte_ratio": 9.7444,
+    "mean_packet_size": 796.5066,
+    "flow_rate_fps": 0.0813
+  },
+  "validation": {
+    "benign_score_mean": 0.0933,
+    "benign_score_p99": 0.6591,
+    "per_capture": {
+      "portscan.pcap": {
+        "roc_auc": 1.0,
+        "attacker_window_score_mean": 0.9716,
+        "benign_window_score_mean": 0.089,
+        "attacker_windows": 3,
+        "benign_windows": 248
+      },
+      "exfil.pcap": {
+        "roc_auc": 0.9928,
+        "attacker_window_score_mean": 0.7271,
+        "benign_window_score_mean": 0.1374,
+        "attacker_windows": 26,
+        "benign_windows": 271
+      },
+      "mixed.pcap": {
+        "roc_auc": 0.9796,
+        "attacker_window_score_mean": 0.7524,
+        "benign_window_score_mean": 0.257,
+        "attacker_windows": 29,
+        "benign_windows": 388
+      }
+    },
+    "mean_roc_auc": 0.9908
+  },
+  "scope_limitation": "Per-source feature vector. Does not address spoofed-source floods, where each source appears once and the anomaly is at the target; that class is handled by the behavioural SYN flood detector."
+}

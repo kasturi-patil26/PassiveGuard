@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PassiveGuard — Unidirectional Threat Monitor</title>
+<meta name="description" content="PS 26145 — passive AI-based cyber threat detection for unidirectional IP traffic.">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0714;--bg-panel:#120e24;--bg-panel2:#17122e;--bg-elevated:#1d1740;
+  --border:#241d47;--border-light:#33285f;
+  --text:#e7e4f5;--text-dim:#8b83b8;--text-muted:#5c5488;
+  --accent:#22d3ee;--accent2:#a855f7;--accent-glow:rgba(34,211,238,.18);
+  --crit:#fb3b6b;--crit-bg:rgba(251,59,107,.1);--crit-glow:rgba(251,59,107,.3);
+  --high:#ff9f43;--high-bg:rgba(255,159,67,.1);--high-glow:rgba(255,159,67,.28);
+  --med:#f5d90a;--med-bg:rgba(245,217,10,.09);--med-glow:rgba(245,217,10,.22);
+  --low:#22e0a0;--low-bg:rgba(34,224,160,.09);--low-glow:rgba(34,224,160,.22);
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Consolas,monospace;
+  --sans:"Inter",-apple-system,"Segoe UI",Roboto,sans-serif;
+  --radius:10px;--radius-lg:16px;
+}
+body{
+  background:
+    radial-gradient(circle at 15% 0%, rgba(168,85,247,.14), transparent 40%),
+    radial-gradient(circle at 85% 10%, rgba(34,211,238,.10), transparent 45%),
+    var(--bg);
+  color:var(--text);font:13px/1.5 var(--sans);min-height:100vh;overflow-x:hidden}
+a{color:var(--accent);text-decoration:none}
+button{cursor:pointer;font:inherit;color:inherit;border:none;background:none}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border-light);border-radius:3px}
+
+.app{display:flex;flex-direction:column;height:100vh}
+
+.header{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--bg-panel);
+  border-bottom:1px solid var(--border);flex-wrap:wrap}
+.header__title{font:700 15px/1.2 var(--sans);letter-spacing:.4px;display:flex;align-items:center;gap:10px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.header__badge{font:11px var(--mono);color:var(--text-dim);border:1px solid var(--border-light);border-radius:6px;padding:3px 8px}
+.tabs{display:flex;gap:4px;margin-left:8px}
+.tab{padding:7px 14px;border-radius:8px;font:600 11px var(--sans);letter-spacing:.3px;color:var(--text-dim);
+  text-transform:uppercase;transition:all .15s}
+.tab:hover{color:var(--text);background:var(--bg-elevated)}
+.tab.active{color:#0a0714;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.spacer{flex:1}
+.conn{display:flex;align-items:center;gap:6px;font:11px var(--mono);color:var(--text-dim)}
+.conn__dot{width:8px;height:8px;border-radius:50%;background:var(--crit)}
+.conn__dot.on{background:var(--low);box-shadow:0 0 8px var(--low-glow);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 22px;background:var(--bg-panel2);border-bottom:1px solid var(--border)}
+.controls label{font:600 10px/1 var(--sans);color:var(--text-dim);text-transform:uppercase;letter-spacing:.6px}
+select,input{appearance:none;background:var(--bg);color:var(--text);border:1px solid var(--border-light);
+  border-radius:var(--radius);padding:7px 12px;font:12px var(--mono)}
+select:focus,input:focus{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px var(--accent-glow)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--radius);font:600 12px var(--mono)}
+.btn--primary{background:linear-gradient(120deg,var(--accent),var(--accent2));color:#0a0714}
+.btn--primary:disabled{opacity:.4;cursor:not-allowed}
+.btn--danger{background:linear-gradient(120deg,#fb3b6b,#ff6b6b);color:#fff}
+.btn--ghost{border:1px solid var(--border-light);color:var(--text-dim)}
+.controls__status{font:12px var(--mono);color:var(--text-dim)}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--border);border-bottom:1px solid var(--border)}
+.tile{background:var(--bg-panel);padding:14px 18px}
+.tile__label{font:600 10px/1 var(--sans);text-transform:uppercase;letter-spacing:.7px;color:var(--text-dim)}
+.tile__value{font:700 22px/1.3 var(--mono);margin-top:4px}
+
+.view{flex:1;min-height:0;display:none}
+.view.active{display:flex}
+
+/* LIVE VIEW */
+.main{display:flex;flex:1;background:var(--border);min-height:0;width:100%}
+@media(max-width:860px){.main{flex-direction:column}}
+.panel{background:var(--bg);display:flex;flex-direction:column;min-height:0}
+.panel--left{flex:0 0 44%;min-width:320px}
+.panel--right{flex:1;min-width:360px}
+.panel__head{padding:10px 18px;font:700 11px/1 var(--sans);text-transform:uppercase;letter-spacing:.7px;color:var(--text-dim);
+  background:var(--bg-panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px}
+.panel__head .count{font:11px var(--mono);color:var(--accent);margin-left:auto}
+.panel__body{overflow-y:auto;flex:1;min-height:0}
+
+.alert-empty,.detail-empty{color:var(--text-muted);padding:48px 20px;text-align:center}
+.alert-item{display:flex;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--border);
+  border-left:3px solid transparent;cursor:pointer}
+.alert-item:hover{background:var(--bg-panel)}
+.alert-item.selected{background:var(--bg-panel2);border-left-color:var(--accent)}
+.alert-item.sev-CRITICAL{border-left-color:var(--crit)}
+.alert-item.sev-HIGH{border-left-color:var(--high)}
+.alert-item.sev-MEDIUM{border-left-color:var(--med)}
+.alert-item.sev-LOW{border-left-color:var(--low)}
+.alert-item__class{font:700 12px var(--mono);min-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alert-item__sub{font:9px var(--mono);color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:1px 5px}
+.alert-item__conf{font:12px var(--mono);color:var(--accent)}
+.alert-item__sev{font:700 9px/1 var(--mono);padding:3px 7px;border-radius:4px;text-transform:uppercase}
+.sev-CRITICAL .alert-item__sev{background:var(--crit-bg);color:var(--crit)}
+.sev-HIGH .alert-item__sev{background:var(--high-bg);color:var(--high)}
+.sev-MEDIUM .alert-item__sev{background:var(--med-bg);color:var(--med)}
+.sev-LOW .alert-item__sev{background:var(--low-bg);color:var(--low)}
+.alert-item__time{font:11px var(--mono);color:var(--text-muted);margin-left:auto;white-space:nowrap}
+
+.detail{padding:20px;overflow-y:auto;flex:1}
+.detail__title{font:700 18px var(--sans);margin-bottom:4px}
+.detail__flow{font:11px var(--mono);color:var(--text-dim);word-break:break-all;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.detail__grid{display:grid;grid-template-columns:110px 1fr;gap:6px 16px;font:12px var(--mono);margin-bottom:18px}
+.detail__grid .k{color:var(--text-dim)}
+.sev-badge{display:inline-block;padding:2px 8px;border-radius:4px;font:700 10px var(--mono)}
+.sev-badge.CRITICAL{background:var(--crit-bg);color:var(--crit)}
+.sev-badge.HIGH{background:var(--high-bg);color:var(--high)}
+.sev-badge.MEDIUM{background:var(--med-bg);color:var(--med)}
+.sev-badge.LOW{background:var(--low-bg);color:var(--low)}
+.sub-badge{display:inline-block;padding:2px 8px;border-radius:4px;font:700 10px var(--mono);background:rgba(168,85,247,.15);color:var(--accent2)}
+.detail__section{font:700 11px var(--sans);text-transform:uppercase;letter-spacing:.7px;color:var(--text-dim);
+  padding:10px 20px;margin:0 -20px 14px;background:var(--bg-panel);border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.evidence{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.evidence:last-child{border:none;margin:0;padding:0}
+.evidence__head{display:flex;justify-content:space-between;gap:12px}
+.evidence__feature{font:12px var(--mono);color:var(--accent)}
+.evidence__value{font:700 13px var(--mono)}
+.evidence__note{font:11.5px var(--sans);color:var(--text-dim);margin-top:5px}
+
+/* HISTORY / ANALYTICS VIEW */
+.hist{flex:1;overflow-y:auto;padding:20px 22px;display:flex;flex-direction:column;gap:18px}
+.charts-row{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:16px}
+@media(max-width:1000px){.charts-row{grid-template-columns:1fr}}
+.card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:14px}
+.card__title{font:700 11px var(--sans);text-transform:uppercase;letter-spacing:.6px;color:var(--text-dim);margin-bottom:10px}
+.card canvas{max-height:220px}
+table.hist-table{width:100%;border-collapse:collapse;font:12px var(--mono)}
+.hist-table th{text-align:left;color:var(--text-dim);font:700 10px var(--sans);text-transform:uppercase;
+  padding:8px 10px;border-bottom:1px solid var(--border-light);letter-spacing:.5px}
+.hist-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+.hist-table tr:hover{background:var(--bg-panel2)}
+.pill{display:inline-block;padding:2px 8px;border-radius:20px;font:700 10px var(--mono)}
+.pill.CRITICAL{background:var(--crit-bg);color:var(--crit)}
+.pill.HIGH{background:var(--high-bg);color:var(--high)}
+.pill.MEDIUM{background:var(--med-bg);color:var(--med)}
+.pill.LOW{background:var(--low-bg);color:var(--low)}
+
+.footer{padding:8px 22px;font:11px var(--sans);color:var(--text-muted);background:var(--bg-panel);
+  border-top:1px solid var(--border);display:flex;gap:12px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div class="header__title">◆ PASSIVEGUARD</div>
+    <span class="header__badge">PS 26145 · read-only</span>
+    <div class="tabs">
+      <button class="tab active" data-view="live">Live</button>
+      <button class="tab" data-view="history">History &amp; Analytics</button>
+    </div>
+    <div class="spacer"></div>
+    <div id="modelBadge"></div>
+    <div class="conn"><span class="conn__dot" id="connDot"></span><span id="connText">connecting…</span></div>
+  </div>
+
+  <div class="controls">
+    <label>Capture</label>
+    <select id="capture"></select>
+    <label>Speed</label>
+    <select id="speed">
+      <option value="0">Max</option>
+      <option value="1">Real-time (1x)</option>
+      <option value="20" selected>20x</option>
+      <option value="100">100x</option>
+    </select>
+    <button class="btn btn--primary" id="startBtn">▶ Start Replay</button>
+    <span class="controls__status" id="status"></span>
+  </div>
+
+  <div class="tiles">
+    <div class="tile"><div class="tile__label">Packets/s</div><div class="tile__value" id="tPps">0</div></div>
+    <div class="tile"><div class="tile__label">Flows/s</div><div class="tile__value" id="tFps">0</div></div>
+    <div class="tile"><div class="tile__label">Mbit/s</div><div class="tile__value" id="tMbps">0</div></div>
+    <div class="tile"><div class="tile__label">Alerts</div><div class="tile__value" id="tAlerts">0</div></div>
+    <div class="tile"><div class="tile__label">Critical</div><div class="tile__value" id="tCrit" style="color:var(--crit)">0</div></div>
+    <div class="tile"><div class="tile__label">High</div><div class="tile__value" id="tHigh" style="color:var(--high)">0</div></div>
+  </div>
+
+  <div class="view active" id="view-live">
+    <div class="main" id="main">
+      <div class="panel panel--left">
+        <div class="panel__head">Live Alerts <span class="count" id="alertCount">0</span></div>
+        <div class="panel__body" id="alertList"><div class="alert-empty">No alerts yet — start a replay.</div></div>
+      </div>
+      <div class="panel panel--right">
+        <div class="panel__head">Evidence</div>
+        <div class="panel__body"><div class="detail" id="detail"><div class="detail-empty">Select an alert to inspect its evidence.</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-history">
+    <div class="hist">
+      <div class="charts-row">
+        <div class="card"><div class="card__title">By Severity</div><canvas id="chartSeverity"></canvas></div>
+        <div class="card"><div class="card__title">By Threat Class</div><canvas id="chartClass"></canvas></div>
+        <div class="card"><div class="card__title">Alerts over time (5 min buckets)</div><canvas id="chartTimeline"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card__title" style="display:flex;align-items:center">
+          Persisted Alert History <span style="flex:1"></span>
+          <button class="btn btn--ghost" id="refreshHist">⟳ Refresh</button>
+        </div>
+        <table class="hist-table">
+          <thead><tr><th>Time</th><th>Class</th><th>Subtype</th><th>Severity</th><th>Conf.</th><th>Src → Dst</th></tr></thead>
+          <tbody id="histBody"><tr><td colspan="6" style="color:var(--text-muted);padding:20px">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span>Observe → Analyse → Alert. Never block, modify, or reach back to the monitored network.</span>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let alerts = [], selected = null, isRunning = false, ws = null;
+
+/* ===== TABS ===== */
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(x => x.classList.remove("active"));
+  t.classList.add("active");
+  $("view-" + t.dataset.view).classList.add("active");
+  if (t.dataset.view === "history") loadHistory();
+});
+
+/* ===== WEBSOCKET ===== */
+function connect() {
+  ws = new WebSocket(`ws://${location.host}/stream`);
+  ws.onopen = () => { $("connDot").classList.add("on"); $("connText").textContent = "live"; };
+  ws.onclose = () => { $("connDot").classList.remove("on"); $("connText").textContent = "disconnected"; setTimeout(connect, 1500); };
+  ws.onmessage = ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === "snapshot") { alerts = msg.data.alerts || []; renderList(); updateStats(msg.data.stats); }
+    else if (msg.type === "alert") { alerts.unshift(msg.data); renderList(); }
+    else if (msg.type === "stats") updateStats(msg.data);
+    else if (msg.type === "done") { updateStats(msg.data); setRunning(false); $("status").textContent = "replay finished"; }
+    else if (msg.type === "error") { setRunning(false); $("status").textContent = "✗ " + msg.data.message; }
+  };
+}
+
+function updateStats(s) {
+  if (!s) return;
+  $("tPps").textContent = Math.round(s.throughput_pps || 0);
+  $("tFps").textContent = Math.round(s.flows_per_s || 0);
+  $("tMbps").textContent = (s.throughput_mbps || 0).toFixed(1);
+  $("tAlerts").textContent = s.alerts || 0;
+  $("tCrit").textContent = (s.by_severity && s.by_severity.CRITICAL) || 0;
+  $("tHigh").textContent = (s.by_severity && s.by_severity.HIGH) || 0;
+  if (s.replay && !s.replay.running) setRunning(false);
+}
+
+/* ===== LIVE LIST / DETAIL ===== */
+function num(v){ return typeof v === "number" ? (Number.isInteger(v) ? v.toLocaleString() : v.toFixed(4)) : v; }
+
+function renderList() {
+  $("alertCount").textContent = alerts.length;
+  if (!alerts.length) { $("alertList").innerHTML = '<div class="alert-empty">No alerts yet — start a replay.</div>'; return; }
+  $("alertList").innerHTML = alerts.map((a, i) => `
+    <div class="alert-item sev-${a.severity} ${selected===i?'selected':''}" onclick="selectAlert(${i})">
+      <span class="alert-item__class">${a.threat_class}</span>
+      ${a.subtype ? `<span class="alert-item__sub">${a.subtype}</span>` : ""}
+      <span class="alert-item__sev">${a.severity}</span>
+      <span class="alert-item__conf">${(a.confidence*100).toFixed(0)}%</span>
+      <span class="alert-item__time">${a.timestamp.slice(11,19)}</span>
+    </div>`).join("");
+}
+
+function selectAlert(i) { selected = i; renderList(); renderDetail(); }
+
+function renderDetail() {
+  if (selected === null || !alerts[selected]) { $("detail").innerHTML = '<div class="detail-empty">Select an alert to inspect its evidence.</div>'; return; }
+  const a = alerts[selected];
+  $("detail").innerHTML = `
+    <div class="detail__title">${a.threat_class}</div>
+    <div class="detail__flow">${a.flow_id}</div>
+    <div class="detail__grid">
+      <span class="k">Severity</span><span class="sev-badge ${a.severity}">${a.severity}</span>
+      <span class="k">Confidence</span><span>${(a.confidence*100).toFixed(1)}%</span>
+      ${a.subtype ? `<span class="k">Subtype</span><span class="sub-badge">${a.subtype}</span>` : ""}
+      <span class="k">Detector</span><span>${a.detector}</span>
+      <span class="k">Window</span><span>${a.window.duration_s.toFixed(1)}s</span>
+      ${a.anomaly_score != null ? `<span class="k">Anomaly score</span><span>${a.anomaly_score}</span>` : ""}
+    </div>
+    <div class="detail__section">Evidence</div>
+    ${a.evidence.map(ev => `
+      <div class="evidence">
+        <div class="evidence__head">
+          <span class="evidence__feature">${ev.feature}</span>
+          <span class="evidence__value">${num(ev.value)}${ev.unit ? " " + ev.unit : ""}</span>
+        </div>
+        ${ev.baseline != null ? `<div class="evidence__note">baseline: ${num(ev.baseline)}</div>` : ""}
+        ${ev.note ? `<div class="evidence__note">${ev.note}</div>` : ""}
+      </div>`).join("")}`;
+}
+
+/* ===== CONTROLS ===== */
+function setRunning(on) {
+  isRunning = on;
+  const btn = $("startBtn");
+  btn.disabled = on;
+  btn.className = on ? "btn btn--danger" : "btn btn--primary";
+  btn.textContent = on ? "● Replaying…" : "▶ Start Replay";
+}
+
+async function loadCaptures() {
+  try {
+    const r = await fetch("/api/captures"); const d = await r.json();
+    $("capture").innerHTML = d.captures.map(c =>
+      `<option value="${c.name}" ${c.name==="mixed.pcap"?"selected":""}>${c.name} (${(c.bytes/1e6).toFixed(1)} MB)</option>`).join("");
+    if (!d.model_trained) $("modelBadge").innerHTML = '<span class="header__badge" style="color:var(--med)">⚠ model not trained</span>';
+  } catch(e) { $("capture").innerHTML = '<option value="">failed to load</option>'; }
+}
+
+$("startBtn").onclick = async () => {
+  const cap = $("capture").value; if (!cap) return;
+  alerts = []; selected = null; renderList(); renderDetail(); setRunning(true);
+  $("status").textContent = "replaying…";
+  try {
+    const r = await fetch("/api/replay", { method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ capture: cap, speed: +$("speed").value, model: true }) });
+    const d = await r.json();
+    if (!d.ok) { $("status").textContent = "✗ " + d.error; setRunning(false); }
+  } catch(e) { $("status").textContent = "✗ connection error"; setRunning(false); }
+};
+
+/* ===== HISTORY / ANALYTICS (new — backed by SQLite persistence, storage.py) ===== */
+let charts = {};
+function upsertChart(id, cfg) {
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart($(id).getContext("2d"), cfg);
+}
+const palette = ["#22d3ee","#a855f7","#fb3b6b","#ff9f43","#f5d90a","#22e0a0","#6366f1","#ec4899"];
+
+async function loadHistory() {
+  $("histBody").innerHTML = '<tr><td colspan="6" style="color:var(--text-muted);padding:20px">Loading…</td></tr>';
+  const [summaryR, histR] = await Promise.all([fetch("/api/stats/summary"), fetch("/api/history?limit=100")]);
+  const summary = await summaryR.json();
+  const hist = await histR.json();
+
+  const sevLabels = Object.keys(summary.by_severity || {});
+  upsertChart("chartSeverity", { type:"doughnut",
+    data:{ labels: sevLabels, datasets:[{ data: sevLabels.map(k=>summary.by_severity[k]),
+      backgroundColor: sevLabels.map(s => ({CRITICAL:"#fb3b6b",HIGH:"#ff9f43",MEDIUM:"#f5d90a",LOW:"#22e0a0"}[s]||"#8b83b8")) }] },
+    options:{ plugins:{legend:{labels:{color:"#e7e4f5"}}} } });
+
+  const classLabels = Object.keys(summary.by_class || {});
+  upsertChart("chartClass", { type:"bar",
+    data:{ labels: classLabels, datasets:[{ label:"alerts", data: classLabels.map(k=>summary.by_class[k]),
+      backgroundColor: palette }] },
+    options:{ plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{color:"#8b83b8"},grid:{color:"#241d47"}}, y:{ticks:{color:"#8b83b8"},grid:{color:"#241d47"}} } } });
+
+  const buckets = summary.timeline || [];
+  const allClasses = [...new Set(buckets.flatMap(b => Object.keys(b.counts)))];
+  upsertChart("chartTimeline", { type:"line",
+    data:{ labels: buckets.map(b => new Date(b.bucket_epoch*1000).toLocaleTimeString()),
+      datasets: allClasses.map((c,i) => ({ label:c, data: buckets.map(b=>b.counts[c]||0),
+        borderColor: palette[i%palette.length], backgroundColor:"transparent", tension:.3 })) },
+    options:{ plugins:{legend:{labels:{color:"#e7e4f5"}}},
+      scales:{ x:{ticks:{color:"#8b83b8"},grid:{color:"#241d47"}}, y:{ticks:{color:"#8b83b8"},grid:{color:"#241d47"}} } } });
+
+  $("histBody").innerHTML = (hist.alerts || []).length ? hist.alerts.map(a => `
+    <tr>
+      <td>${a.timestamp.slice(0,19).replace("T"," ")}</td>
+      <td>${a.threat_class}</td>
+      <td>${a.subtype || "—"}</td>
+      <td><span class="pill ${a.severity}">${a.severity}</span></td>
+      <td>${(a.confidence*100).toFixed(0)}%</td>
+      <td>${a.src} → ${a.dst}</td>
+    </tr>`).join("") : '<tr><td colspan="6" style="color:var(--text-muted);padding:20px">No persisted alerts yet — run a replay first.</td></tr>';
+}
+$("refreshHist").onclick = loadHistory;
+
+/* ===== INIT ===== */
+loadCaptures();
+connect();
+</script>
+</body>
+</html>
